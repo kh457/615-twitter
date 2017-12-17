@@ -1,0 +1,280 @@
+---
+title: "615 final"
+author: "Kailun Huang"
+date: "12/11/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library('devtools')
+library('twitteR')
+library('stringr')
+library('graphTweets')
+library('igraph')
+library('streamR')
+library('ROAuth')
+```
+## set up twitteR
+```{r}
+api_key <- 	"RIjMQnOXRA3hWjmLmNttEkhZn"
+api_secret <- "CDVOPsKE6t6CFNqUKJdUeZ4fnFBGHGjRjjvTZ0t82YGGlGh5Xr"
+access_token <- "927639920851681280-zJmoliQVXHXOT9GaoOsnvyaYD4f17G7"
+access_token_secret <- "eTrCgqFfBqzuKz0rFxcFqwmLIHqrP9QZMsEhMfakiWfoc"
+
+setup_twitter_oauth(api_key, 
+                    api_secret, 
+                    access_token, 
+                    access_token_secret)
+requestURL <- "https://api.twitter.com/oauth/request_token"
+accessURL <- "https://api.twitter.com/oauth/access_token"
+authURL <- "https://api.twitter.com/oauth/authorize"
+consumerKey <- 	"LFNRqX5i1PkB69SjEEncXWloq"
+consumerSecret <- "4sDHqY6aLm7PRfJLxpq6GsWqphZxzX3dXLjssSLXYhO8wPwL3F"
+my_oauth <- OAuthFactory$new(consumerKey = consumerKey, consumerSecret = consumerSecret, 
+                             requestURL = requestURL, accessURL = accessURL, authURL = authURL)
+my_oauth$handshake(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl"))
+save(my_oauth, file = "my_oauth.Rdata")
+
+```
+
+
+```{r}
+# get data from twitter
+cp3<-searchTwitter('Chris Paul',since='2017-06-28', until='2017-12-12', n = 1000,lang="en")
+# transfer data to a data frame
+cp3.df <- twListToDF(cp3)
+# data cleaning, remove punctuation, non-english symbol, remove numbers, remove url, remove non-english character
+cp3.df$text = gsub("&amp", "", cp3.df$text)
+cp3.df$text = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", cp3.df$text)
+cp3.df$text = gsub("@\\w+", "",cp3.df$text)
+cp3.df$text = gsub("[[:punct:]]", "", cp3.df$text)
+cp3.df$text = gsub("[[:digit:]]", "", cp3.df$text)
+cp3.df$text = gsub("http\\w+", "", cp3.df$text)
+cp3.df$text = gsub("[ \t]{2,}", "", cp3.df$text)
+cp3.df$text = gsub("^\\s+|\\s+$", "", cp3.df$text)
+cp3.df$text <- str_replace_all(cp3.df$text," "," ")
+cp3.df$text<-iconv(cp3.df$text, from = "latin1", to = "ASCII", sub="")
+# transfer data fram to a csv file
+write.csv(cp3.df,"cp3.csv")
+```
+
+
+
+```{r}
+# read csv file
+cp<-read.csv('cp3.csv')
+# replace all the unknown symbol, tranform capital to lower letter, remove common words, remove stop words
+cp3_corpus<-Corpus(VectorSource(str_replace_all(cp$text, "@", "")))
+cp3_corpus<-tm_map(cp3_corpus, content_transformer(tolower))
+cp3_corpus<-tm_map(cp3_corpus, removeWords, stopwords("english"))
+cp3_corpus<-tm_map(cp3_corpus, removeWords, c("cp3","paul","chris"))
+# create word cloud
+wordcloud(cp3_corpus,random.order = F,max.words = 40,scale = c(3,0.5),colors = rainbow(50))
+# save it as rds file
+saveRDS(cp3_corpus,"cp3_corpus.rds")
+```
+
+
+
+```{r}
+jh<-searchTwitter('James Harden',since='2017-06-28', until='2017-12-12', n = 1000,lang="en")
+jh.df <- twListToDF(jh)
+jh.df$text = gsub("&amp", "", jh.df$text)
+jh.df$text = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", jh.df$text)
+jh.df$text = gsub("@\\w+", "",jh.df$text)
+jh.df$text = gsub("[[:punct:]]", "", jh.df$text)
+jh.df$text = gsub("[[:digit:]]", "", jh.df$text)
+jh.df$text = gsub("http\\w+", "", jh.df$text)
+jh.df$text = gsub("[ \t]{2,}", "", jh.df$text)
+jh.df$text = gsub("^\\s+|\\s+$", "", jh.df$text)
+jh.df$text <- str_replace_all(jh.df$text," "," ")
+jh.df$text<-iconv(jh.df$text, from = "latin1", to = "ASCII", sub="")
+write.csv(jh.df,"jh.csv")
+```
+
+```{r}
+jh<-read.csv('jh.csv')
+jh_corpus<-Corpus(VectorSource(str_replace_all(jh$text, "@", "")))
+jh_corpus<-tm_map(jh_corpus, content_transformer(tolower))
+jh_corpus<-tm_map(jh_corpus, removeWords, stopwords("english"))
+jh_corpus<-tm_map(jh_corpus, removeWords, c("james","harden"))
+wordcloud(jh_corpus,random.order = F,max.words = 40,scale = c(3,0.5),colors = rainbow(50))
+
+saveRDS(jh_corpus,"jh_corpus.rds")
+
+```
+
+```{r}
+## sentiment analysis for Chris Paul
+cp3sent <- data.frame(lapply(cp, as.character), stringsAsFactors=FALSE)
+
+cp3_text_source <- select(cp3sent,text,X)
+cp3_text <- melt(data = cp3_text_source, id.vars = "X")
+cp3_text <- data_frame(line = cp3_text$X, text = cp3_text$value)
+cp3_text <- cp3_text %>%
+  unnest_tokens(word, text)
+
+data(stop_words)
+
+cp3_text <- cp3_text %>%
+  anti_join(stop_words) 
+
+cp3_text %>%
+  count(word, sort = TRUE) 
+
+nrcjoy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")
+
+cp3_text_sentiment_stat <- cp3_text %>%
+  inner_join(nrcjoy) %>%
+  count(word, sort = TRUE)
+
+cp3_text$line <- as.numeric(cp3_text$line)
+
+bing_word_counts <- cp3_text %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+saveRDS(bing_word_counts,"bing_word_counts.rds")
+
+## sentiment analysis for harden
+
+jhsent <- data.frame(lapply(jh, as.character), stringsAsFactors=FALSE)
+
+jh_text_source <- select(jhsent,text,X)
+jh_text <- melt(data = jh_text_source, id.vars = "X")
+jh_text <- data_frame(line = jh_text$X, text = jh_text$value)
+jh_text <- jh_text %>%
+  unnest_tokens(word, text)
+
+data(stop_words)
+
+jh_text <- jh_text %>%
+  anti_join(stop_words) 
+
+jh_text %>%
+  count(word, sort = TRUE) 
+
+nrcjoy1 <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")
+
+jh_text_sentiment_stat <- jh_text %>%
+  inner_join(nrcjoy1) %>%
+  count(word, sort = TRUE)
+
+jh_text$line <- as.numeric(jh_text$line)
+
+bing_word_counts1 <- jh_text %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts1
+
+bing_word_counts1 %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+saveRDS(bing_word_counts1,"bing_word_counts1.rds")
+```
+
+
+```{r}
+load("my_oauth.Rdata")
+filterStream("cp3.json", 
+             track=c("CP3"), 
+             locations = c(-125, 25, -66,50), 
+             timeout=200, oauth=my_oauth)
+cp<-parseTweets("cp3.json", verbose = TRUE)
+ck1 <- sum(cp$lat>0, na.rm = TRUE)
+ck2 <- sum(cp$place_lat>0, na.rm = TRUE)
+ck3 <- sum(!is.na(cp$location))
+
+cpdata <- map_data("state")   
+cppoints <- data.frame(x = as.numeric(cp$lon),  
+                       y = as.numeric(cp$lat))
+cppoints <- cppoints[cppoints$y > 25, ]  
+cppoints<-filter(cppoints,y>19&y<65,x>(-161.7)&x<(-68.01))
+ggplot(cpdata) + 
+  geom_map(aes(map_id = region),  
+           map =cpdata,  
+           fill = "white",             
+           color = "grey20", size = 0.25) + 
+  expand_limits(x = cpdata$long, y = cpdata$lat) +            
+  theme(axis.line = element_blank(),  
+        axis.text = element_blank(),  
+        axis.ticks = element_blank(),                     
+        axis.title = element_blank(),  
+        panel.background = element_blank(),  
+        panel.border = element_blank(),                     
+        panel.grid.major = element_blank(), 
+        plot.background = element_blank(),                     
+        plot.margin = unit(0 * c( -1.5, -1.5, -1.5, -1.5), "lines")) +  
+        geom_point(data = cppoints,             
+        aes(x = x, y = y), size = 1,  
+        alpha = 1/5, color = "blue")
+saveRDS(cppoints, file="cppoints.rds")
+```
+
+```{R}
+load("my_oauth.Rdata")
+## ggmap for tweets relate to James Harden
+
+filterStream("jh1.json", 
+             track=c("Harden"), 
+             locations = c(-125, 25, -66,50), 
+             timeout=200, oauth=my_oauth)
+jh1<-parseTweets("jh1.json", verbose = TRUE)
+hk1 <- sum(jh1$lat>0, na.rm = TRUE)
+hk2 <- sum(jh1$place_lat>0, na.rm = TRUE)
+hk3 <- sum(!is.na(jh1$location))
+
+cpdata <- map_data("state")   
+jhpoints <- data.frame(x = as.numeric(jh$lon),  
+                       y = as.numeric(jh$lat))
+jhpoints <- jhpoints[jhpoints$y > 25, ]  
+jhpoints<-filter(jhpoints,y>19&y<65,x>(-161.7)&x<(-68.01))
+ggplot(cpdata) + 
+  geom_map(aes(map_id = region),  
+           map =cpdata,  
+           fill = "white",             
+           color = "grey20", size = 0.25) + 
+  expand_limits(x = cpdata$long, y = cpdata$lat) +            
+  theme(axis.line = element_blank(),  
+        axis.text = element_blank(),  
+        axis.ticks = element_blank(),                     
+        axis.title = element_blank(),  
+        panel.background = element_blank(),  
+        panel.border = element_blank(),                     
+        panel.grid.major = element_blank(), 
+        plot.background = element_blank(),                     
+        plot.margin = unit(0 * c( -1.5, -1.5, -1.5, -1.5), "lines")) +  
+        geom_point(data = jhpoints,             
+        aes(x = x, y = y), size = 1,  
+        alpha = 1/5, color = "blue")
+saveRDS(jhpoints, file="jhpoints.rds")
+
+
+```
+
